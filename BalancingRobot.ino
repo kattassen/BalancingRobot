@@ -14,10 +14,9 @@
 #define DEFAULT_KI 1
 #define DEFAULT_KD 50
 
-#define DELTA_TIME 1000
-#define MAX_ANGLE 80
+#define DELTA_TIME 100
+#define MAX_ANGLE 150
 #define MAX_SPEED 255
-
 
 /* IO defines */
 #define PWM_A   3
@@ -47,15 +46,15 @@ void setup() {
 
   /* Setup the motor shield */
   /* Setup Motor Channel A */
-  pinMode(12, OUTPUT); /* Initiates Motor Channel A pin */
-  pinMode(9, OUTPUT); /* Initiates Brake Channel A pin */
+  pinMode(DIR_A, OUTPUT);    /* Initiates Motor Channel A pin */
+  pinMode(BRAKE_A, OUTPUT);  /* Initiates Brake Channel A pin */
   /* Setup Motor Channel B */
-  pinMode(13, OUTPUT); /* Initiates Motor Channel A pin */
-  pinMode(8, OUTPUT);  /* Initiates Brake Channel A pin */
+  pinMode(DIR_B, OUTPUT);    /* Initiates Motor Channel B pin */
+  pinMode(BRAKE_B, OUTPUT);  /* Initiates Brake Channel B pin */
 
   /* Initiate debug mode (serial printouts) */
 #ifdef DEBUG
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.println("Hello there, let's start!");
 #endif
 
@@ -74,8 +73,10 @@ void loop() {
   /* Calculate the speed and direction of motors */
   motorSpeed = calculateMotorSpeed(robotAngle);
 
+  /* Set the speed of motors */
   setMotorSpeed(motorSpeed);
 
+  /* Dealy for DELTA_TIME ms */
   delay(DELTA_TIME);
 }
 
@@ -85,18 +86,24 @@ void loop() {
  * Retrieve angle from sensor 
  */
 float getAngle() {
-  float angle = 0;
+  int angle = 0;
 
   /* Get "angle" from serial console */
 #ifdef DEBUG
-  angle = float(Serial.read());
+  angle = Serial.read();
   if (angle == -1)
     angle = 0;
-  else
-    angle = angle - 100;
+  else if (angle == 65)
+    angle = 150;
+  else if (angle == 90)    
+    angle = -150;
+  else if (angle == 97)    
+    angle = 55;
+  else if (angle == 122)    
+    angle = -55;
 #endif
-
-  return angle;
+  
+  return float(angle);
 }
 
 
@@ -110,9 +117,13 @@ int calculateMotorSpeed(float angle) {
   float speed = 0;
   
   /* Only calculate integral if angle is big */
-  if (abs(angle) > SMALL_ERROR) {
+  if (angle > SMALL_ERROR || angle < -SMALL_ERROR) {
     /* Add I: angle */
+    Serial.print("integral before: ");
+    Serial.print(integral);
     integral = integral + angle;
+    Serial.print("    after: ");
+    Serial.println(integral);
   }
   else {
     integral = 0;
@@ -123,6 +134,8 @@ int calculateMotorSpeed(float angle) {
 
 #ifdef DEBUG
   Serial.print("Angle = ");
+  Serial.println(angle);
+  Serial.print("kp * Angle = ");
   Serial.println(kp * angle);
   Serial.print("Integral = ");
   Serial.println(ki * integral);
@@ -140,6 +153,8 @@ int calculateMotorSpeed(float angle) {
 
 /*
  * Set speed of the motors
+ *
+ * Input:  Speed (+/-255)
  */
 void setMotorSpeed(int speed) {
   boolean direction = HIGH;
@@ -157,7 +172,7 @@ void setMotorSpeed(int speed) {
 
   /* Motor A control */
   digitalWrite(DIR_A, direction);  /* Set direction of motor (HIGH/LOW) */
-  digitalWrite(BRAKE_A, LOW);      /* Disengage the Brake */
+//  digitalWrite(BRAKE_A, LOW);      /* Disengage the Brake */
   analogWrite(PWM_A, abs(speed));  /* Spins the motor at specific speed */
   
   //Motor B forward @ full speed
