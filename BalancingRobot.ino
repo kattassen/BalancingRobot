@@ -11,20 +11,21 @@
 
 /* Default values */
 #define DEFAULT_KP 3.18
-#define DEFAULT_KI 1
+#define DEFAULT_KI 0.001
 #define DEFAULT_KD 50
 
-#define DELTA_TIME 100
+#define DELTA_TIME 10
 #define MAX_ANGLE 150
 #define MAX_SPEED 255
 
 /* IO defines */
-#define PWM_A   3
-#define PWM_B   11
-#define BRAKE_A 9
-#define BRAKE_B 8
-#define DIR_A   12
-#define DIR_B   13
+#define PWM_A     3
+#define PWM_B     11
+#define BRAKE_A   9
+#define BRAKE_B   8
+#define DIR_A     12
+#define DIR_B     13
+#define CURRENT_A 0
 
 #define SMALL_ERROR 4
 
@@ -85,22 +86,12 @@ void loop() {
 /* 
  * Retrieve angle from sensor 
  */
-float getAngle() {
+int getAngle() {
   int angle = 0;
 
-  /* Get "angle" from serial console */
-#ifdef DEBUG
-  angle = Serial.read();
-  if (angle == -1)
-    angle = 0;
-  else if (angle == 65)
-    angle = 150;
-  else if (angle == 90)    
-    angle = -150;
-  else if (angle == 97)    
-    angle = 55;
-  else if (angle == 122)    
-    angle = -55;
+  /* Get "angle" from potentiometer */
+#ifdef DEBUG    
+  angle = (analogRead(2) - 500) /3;
 #endif
   
   return float(angle);
@@ -118,12 +109,7 @@ int calculateMotorSpeed(float angle) {
   
   /* Only calculate integral if angle is big */
   if (angle > SMALL_ERROR || angle < -SMALL_ERROR) {
-    /* Add I: angle */
-    Serial.print("integral before: ");
-    Serial.print(integral);
-    integral = integral + angle;
-    Serial.print("    after: ");
-    Serial.println(integral);
+    integral = integral + angle * DELTA_TIME;
   }
   else {
     integral = 0;
@@ -168,6 +154,8 @@ void setMotorSpeed(int speed) {
   Serial.print(speed);
   Serial.print("   Direction: ");
   Serial.println(direction);
+  Serial.print("   Current: ");
+  Serial.println(analogRead(CURRENT_A));
 #endif
 
   /* Motor A control */
