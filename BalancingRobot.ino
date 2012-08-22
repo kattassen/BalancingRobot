@@ -9,6 +9,28 @@
 /* Debug flag */
 #define DEBUG 1
 
+#include "Wire.h"
+
+// I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
+// for both classes must be in the include path of your project
+#include "I2Cdev.h"
+#include "MPU6050.h"
+
+
+/* Defines for registers handling internall pullups */
+#ifndef cbi
+#define cbi(sfr, bit) (_SFR_BYTE(sfr) &= ~_BV(bit))
+#endif
+
+/* Accelerometer and Gyro
+ * class default I2C address is 0x68 */
+MPU6050 accelgyro;
+
+/* xyz values */
+int16_t ax, ay, az;
+int16_t gx, gy, gz;
+
+
 /* Default values */
 #define DEFAULT_KP 3.18
 #define DEFAULT_KI 0.001
@@ -37,13 +59,40 @@ float kd = DEFAULT_KD;
 float integral = 0;
 float derivate = 0;
 
-float robotAngle = 0;
-float oldAngle = 0;
-
-
+float robotAngle  = 0;
+float oldAngle    = 0;
+float angleOffset = 0;
 
 void setup() {
-  /* Initiate some modules */
+  /* Initiate debug mode (serial printouts) */
+#ifdef DEBUG
+  Serial.begin(115200);
+  Serial.println("Hello there, let's start!");
+#endif
+
+  /* Initiate I2C bus */
+  Wire.begin();
+
+  /* Deactivate internal pullups */  
+#if defined(__AVR_ATmega168__) || defined(__AVR_ATmega8__) || defined(__AVR_ATmega328P__)
+  // deactivate internal pull-ups for twi
+  // as per note from atmega8 manual pg167
+  cbi(PORTC, 4);
+  cbi(PORTC, 5);
+#else
+  // deactivate internal pull-ups for twi
+  // as per note from atmega128 manual pg204
+  cbi(PORTD, 0);
+  cbi(PORTD, 1);
+#endif
+
+  /* initialize device */
+  Serial.println("Starting I2C Gyro");
+  accelgyro.initialize();
+
+  /* Check connection to i2c device*/
+  Serial.println("Testing device connections...");
+  Serial.println(accelgyro.testConnection() ? "MPU6050 connected" : "MPU6050 connection failed");
 
   /* Setup the motor shield */
   /* Setup Motor Channel A */
@@ -52,14 +101,11 @@ void setup() {
   /* Setup Motor Channel B */
   pinMode(DIR_B, OUTPUT);    /* Initiates Motor Channel B pin */
   pinMode(BRAKE_B, OUTPUT);  /* Initiates Brake Channel B pin */
-
-  /* Initiate debug mode (serial printouts) */
-#ifdef DEBUG
-  Serial.begin(115200);
-  Serial.println("Hello there, let's start!");
-#endif
-
-
+  
+  Serial.println("Calibrating angle, find equality for 2 seconds");
+  delay(2000);
+  accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  angleOffset = ax;
 }
 
 void loop() {
@@ -86,15 +132,29 @@ void loop() {
 /* 
  * Retrieve angle from sensor 
  */
-int getAngle() {
+float getAngle() {
   int angle = 0;
 
-  /* Get "angle" from potentiometer */
-#ifdef DEBUG    
-  angle = (analogRead(2) - 500) /3;
-#endif
+  /* Get "angle" from serial console */
+/*#ifdef DEBUG
+  angle = Serial.read();
+  if (angle == -1)
+    angle = 0;
+  else if (angle == 65)
+    angle = 150;
+  else if (angle == 90)    
+    angle = -150;
+  else if (angle == 97)    
+    angle = 55;
+  else if (angle == 122)    
+    angle = -55;
+#endif*/
+
+  /* Don't know if there is some problem with gyra vs acc 
+     But here I look for acc, that might be wrong */
+  accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
   
-  return float(angle);
+  return float(ax-angleOffset);
 }
 
 
