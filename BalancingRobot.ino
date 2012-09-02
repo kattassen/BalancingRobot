@@ -46,6 +46,7 @@ int16_t gx, gy, gz;
 #define DIR_A     12
 #define DIR_B     13
 #define CURRENT_A 0
+#define GYRO_START_TIME 25
 
 #define SMALL_ERROR 0.5
 
@@ -145,6 +146,11 @@ void setup() {
       Serial.print(F("DMP Initialization failed (code "));
       Serial.print(devStatus);
       Serial.println(F(")"));
+      /* Don't continue */
+      while(1) {
+         Serial.println("Fail");
+         delay(1000);
+      }
   }
 
   /* Setup the motor shield */
@@ -154,22 +160,51 @@ void setup() {
   /* Setup Motor Channel B */
   pinMode(DIR_B, OUTPUT);    /* Initiates Motor Channel B pin */
   pinMode(BRAKE_B, OUTPUT);  /* Initiates Brake Channel B pin */
+  
+  /* Waiting for gyro to stabilize */
+  Serial.print("Waiting for gyro to stabilize:");
+  for  (int i = GYRO_START_TIME; i > 0; i--) {
+    Serial.print(" ");
+    Serial.print(i);
+    delay(1000);
+  }
+  Serial.println("");
+  
+  Serial.println("Retrieve angle to clear FIFO");
+  mpuInterrupt = false;
+  mpuIntStatus = mpu.getIntStatus();
+  mpu.resetFIFO();
+  while (!mpuInterrupt && fifoCount < packetSize){Serial.println("RJOHOHO");};
+  angleOffset = getAngle();
+  Serial.println(angleOffset);
 }
 
-void loop() {    
-  int motorSpeed = 0;  
+
+void loop() {
+  int motorSpeed = 0;
+
+  /* If no values are availabe in FIFO, return */
+  if (!mpuInterrupt && fifoCount < packetSize) return;
 
   /* Store old angle */
   oldAngle = robotAngle;
 
   /* Check angle of robot */
-/*  robotAngle = getAngle();*/
+  robotAngle = getAngle();
 
-  // if programming failed, don't try to do anything
-  if (!dmpReady) return;
+  /* Calculate the speed and direction of motors */
+  motorSpeed = calculateMotorSpeed(robotAngle);
 
-  /* If no values are availabe in FIFO, return */  
-  if (!mpuInterrupt && fifoCount < packetSize) return;
+  /* Set the speed of motors */
+  setMotorSpeed(motorSpeed);
+}
+
+
+
+/* 
+ * Retrieve angle from sensor 
+ */
+float getAngle() {
 
   /* reset interrupt flag and get INT_STATUS byte */
   mpuInterrupt = false;
@@ -203,47 +238,11 @@ void loop() {
         Serial.print("\t");
         Serial.print(euler[1] * 180/M_PI);
         Serial.print("\t");
-        Serial.println(euler[2] * 180/M_PI);*/
-      robotAngle=euler[1] * 180/M_PI;
+        Serial.println(euler[2] * 180/M_PI);
+       Serial.print("Angle without offset=");
+       Serial.println(euler[1] * 180/M_PI);*/
+       return (euler[1] * 180/M_PI) - angleOffset;
   }
-
-
-
-  /* Calculate the speed and direction of motors */
-  motorSpeed = calculateMotorSpeed(robotAngle);
-
-  /* Set the speed of motors */
-  setMotorSpeed(motorSpeed);
-}
-
-
-
-/* 
- * Retrieve angle from sensor 
- */
-float getAngle() {
-  int angle = 0;
-
-  /* Get "angle" from serial console */
-/*#ifdef DEBUG
-  angle = Serial.read();
-  if (angle == -1)
-    angle = 0;
-  else if (angle == 65)
-    angle = 150;
-  else if (angle == 90)    
-    angle = -150;
-  else if (angle == 97)    
-    angle = 55;
-  else if (angle == 122)    
-    angle = -55;
-#endif*/
-
-  /* Don't know if there is some problem with gyra vs acc 
-     But here I look for acc, that might be wrong */
-  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-  
-  return float(ax-angleOffset);
 }
 
 
@@ -268,9 +267,11 @@ int calculateMotorSpeed(float angle) {
   derivate = (angle - oldAngle);
   count++;
 #ifdef DEBUG
-  if (count%10 == 0) {
+/*  if (count%10 == 0) {
   Serial.print("Angle = ");
   Serial.println(angle);
+  Serial.print("AngleOffset = ");
+  Serial.println(angleOffset);}
   Serial.print("kp * Angle = ");
   Serial.println(kp * angle);
   Serial.print("Integral = ");
@@ -278,7 +279,7 @@ int calculateMotorSpeed(float angle) {
   Serial.print("Derivate = ");
   Serial.println(kd * derivate);
   Serial.print("Total speed (float):");
-  Serial.println(kp * angle + ki * integral + kd * derivate);}
+  Serial.println(kp * angle + ki * integral + kd * derivate);}*/
 #endif
 
   speed = (kp *angle + ki * integral + kd * derivate);
